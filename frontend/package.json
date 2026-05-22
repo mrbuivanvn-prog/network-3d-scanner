@@ -1,0 +1,26 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:web": "vite --host 0.0.0.0 --port 5173 --clearScreen false",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:web": "vite build && vite preview --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.0.0",
+    "@react-three/fiber": "^8.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.17",
+    "@types/react-dom": "^18.0.6",
+    "@vitejs/plugin-react": "^2.0.1",
+    "vite": "^3.0.7"
+  }
+}

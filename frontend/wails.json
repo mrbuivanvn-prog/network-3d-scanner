@@ -1,0 +1,7 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "network-3d-scanner-frontend",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto"
+}
