@@ -44,25 +44,37 @@ const (
 
 // Common port to service mapping
 var portServices = map[int]string{
-	21:   "FTP",
-	22:   "SSH",
-	23:   "Telnet",
-	25:   "SMTP",
-	53:   "DNS",
-	80:   "HTTP",
-	110:  "POP3",
-	143:  "IMAP",
-	443:  "HTTPS",
-	445:  "SMB",
-	3306: "MySQL",
-	3389: "RDP",
-	5432: "PostgreSQL",
-	5900: "VNC",
-	6379: "Redis",
-	8080: "HTTP-ALT",
-	8443: "HTTPS-ALT",
+	21:    "FTP",
+	22:    "SSH",
+	23:    "Telnet",
+	25:    "SMTP",
+	53:    "DNS",
+	80:    "HTTP",
+	110:   "POP3",
+	143:   "IMAP",
+	443:   "HTTPS",
+	445:   "SMB",
+	3306:  "MySQL",
+	3389:  "RDP",
+	5432:  "PostgreSQL",
+	5900:  "VNC",
+	6379:  "Redis",
+	8080:  "HTTP-ALT",
+	8443:  "HTTPS-ALT",
 	27017: "MongoDB",
 }
+
+// Pre-compiled regex patterns
+var (
+	// Windows ping: "time=23ms"
+	pingWindowsRegex = regexp.MustCompile(`time=(\d+)ms`)
+	// Linux/macOS ping: "time=23.4 ms"
+	pingUnixRegex = regexp.MustCompile(`time=([0-9.]+) ms`)
+	// Windows tracert: " 1    <1 ms    <1 ms    <1 ms  192.168.1.1"
+	tracertWindowsRegex = regexp.MustCompile(`^\s*(\d+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([^\s]+)`)
+	// Linux/macOS traceroute: " 1  192.168.1.1  0.5 ms  0.4 ms  0.3 ms"
+	tracerouteUnixRegex = regexp.MustCompile(`^\s*(\d+)\s+([^\s]+)\s+([0-9.]+)\s+ms`)
+)
 
 // ============================================================================
 // Data Structures
@@ -351,13 +363,13 @@ func (a *App) PingSingle(host string) PingResult {
 	
 	if stdruntime.GOOS == "windows" {
 		// Windows format: "time=23ms"
-		if match := regexp.MustCompile(`time=(\d+)ms`).FindStringSubmatch(outputStr); len(match) > 1 {
+		if match := pingWindowsRegex.FindStringSubmatch(outputStr); len(match) > 1 {
 			latency = match[1] + "ms"
 			success = true
 		}
 	} else {
 		// Linux/macOS format: "time=23.4 ms"
-		if match := regexp.MustCompile(`time=([0-9.]+) ms`).FindStringSubmatch(outputStr); len(match) > 1 {
+		if match := pingUnixRegex.FindStringSubmatch(outputStr); len(match) > 1 {
 			latency = match[1] + "ms"
 			success = true
 		}
@@ -421,7 +433,7 @@ func (a *App) Traceroute(host string) []TracerouteHop {
 		
 	if stdruntime.GOOS == "windows" {
 			// Windows tracert format: " 1    <1 ms    <1 ms    <1 ms  192.168.1.1"
-			if match := regexp.MustCompile(`^\s*(\d+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([^\s]+)`).FindStringSubmatch(line); len(match) > 4 {
+			if match := tracertWindowsRegex.FindStringSubmatch(line); len(match) > 4 {
 				hopNum, _ = strconv.Atoi(match[1])
 				hopIP = match[5]
 				// Extract best latency
@@ -435,7 +447,7 @@ func (a *App) Traceroute(host string) []TracerouteHop {
 			}
 		} else {
 			// Linux/macOS traceroute format: " 1  192.168.1.1  0.5 ms  0.4 ms  0.3 ms"
-			if match := regexp.MustCompile(`^\s*(\d+)\s+([^\s]+)\s+([0-9.]+)\s+ms`).FindStringSubmatch(line); len(match) > 3 {
+			if match := tracerouteUnixRegex.FindStringSubmatch(line); len(match) > 3 {
 				hopNum, _ = strconv.Atoi(match[1])
 				hopIP = match[2]
 				latency = match[3] + "ms"
