@@ -1,9 +1,27 @@
 {
   "name": "network-3d-scanner-root",
+  "version": "1.0.0",
+  "description": "Network 3D Scanner - Professional network scanning tool with 3D visualization",
   "private": true,
+  "author": "mrbuivan.vn",
   "scripts": {
-    "dev": "cd frontend && npm run dev",
-    "build": "cd frontend && npm run build",
-    "preview": "cd frontend && npm run preview"
-  }
+    "dev": "wails dev",
+    "build": "wails build -platform windows/amd64",
+    "build:linux": "wails build -platform linux/amd64",
+    "build:macos": "wails build -platform darwin/universal",
+    "build:nsis": "wails build -platform windows/amd64 -nsis",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:preview": "cd frontend && npm run preview",
+    "clean": "rm -rf build/bin frontend/dist frontend/node_modules/.vite",
+    "doctor": "wails doctor"
+  },
+  "keywords": [
+    "network-scanner",
+    "wails",
+    "react",
+    "3d-visualization",
+    "network-tools"
+  ],
+  "license": "MIT"
 }

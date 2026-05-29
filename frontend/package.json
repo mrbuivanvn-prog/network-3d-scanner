@@ -1,14 +1,20 @@
 {
-  "name": "frontend",
+  "name": "network-3d-scanner-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Network 3D Scanner - Wails + React + Three.js",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "author": "mrbuivan.vn",
   "scripts": {
     "dev": "vite",
     "dev:web": "vite --host 0.0.0.0 --port 5173 --clearScreen false",
     "build": "vite build",
+    "build:prod": "vite build --mode production",
     "preview": "vite preview",
-    "build:web": "vite build && vite preview --host 0.0.0.0 --port 4173"
+    "preview:web": "vite build && vite preview --host 0.0.0.0 --port 4173",
+    "clean": "rm -rf dist node_modules/.vite",
+    "lint": "eslint src --ext .js,.jsx",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@react-three/drei": "^9.0.0",
@@ -22,5 +28,8 @@
     "@types/react-dom": "^18.0.6",
     "@vitejs/plugin-react": "^2.0.1",
     "vite": "^3.0.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
