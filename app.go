@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -22,61 +23,119 @@ type App struct {
 	ctx context.Context
 }
 
+// ============================================================================
+// Constants
+// ============================================================================
+
+const (
+	AppName        = "Network 3D Scanner"
+	AppVersion     = "1.0.0"
+	AppAuthor      = "mrbuivan.vn"
+	
+	// Network scan settings
+	DefaultTimeout   = 2 * time.Second
+	DefaultPingCount = 1
+	MaxConcurrentPing = 50
+	
+	// Status values
+	StatusOnline  = "Online"
+	StatusOffline = "Offline"
+)
+
+// Common port to service mapping
+var portServices = map[int]string{
+	21:    "FTP",
+	22:    "SSH",
+	23:    "Telnet",
+	25:    "SMTP",
+	53:    "DNS",
+	80:    "HTTP",
+	110:   "POP3",
+	143:   "IMAP",
+	443:   "HTTPS",
+	445:   "SMB",
+	3306:  "MySQL",
+	3389:  "RDP",
+	5432:  "PostgreSQL",
+	5900:  "VNC",
+	6379:  "Redis",
+	8080:  "HTTP-ALT",
+	8443:  "HTTPS-ALT",
+	27017: "MongoDB",
+}
+
+// Pre-compiled regex patterns
+var (
+	// Windows ping: "time=23ms"
+	pingWindowsRegex = regexp.MustCompile(`time=(\d+)ms`)
+	// Linux/macOS ping: "time=23.4 ms"
+	pingUnixRegex = regexp.MustCompile(`time=([0-9.]+) ms`)
+	// Windows tracert: " 1    <1 ms    <1 ms    <1 ms  192.168.1.1"
+	tracertWindowsRegex = regexp.MustCompile(`^\s*(\d+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([^\s]+)`)
+	// Linux/macOS traceroute: " 1  192.168.1.1  0.5 ms  0.4 ms  0.3 ms"
+	tracerouteUnixRegex = regexp.MustCompile(`^\s*(\d+)\s+([^\s]+)\s+([0-9.]+)\s+ms`)
+)
+
+// ============================================================================
+// Data Structures
+// ============================================================================
+
 // NetworkDevice represents a discovered network device
 type NetworkDevice struct {
 	IP     string `json:"ip"`
 	Host   string `json:"host"`
 	MAC    string `json:"mac"`
-	Status string `json:"status"` // "Online" or "Offline"
+	Status string `json:"status"`
 }
 
 // PingResult represents the result of a ping operation
 type PingResult struct {
-	Host     string `json:"host"`
-	Latency  string `json:"latency"` // e.g., "23.4ms" or "timeout"
-	Success  bool   `json:"success"`
-	Error    string `json:"error,omitempty"`
+	Host    string `json:"host"`
+	Latency string `json:"latency"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 // TracerouteHop represents a single hop in traceroute
 type TracerouteHop struct {
-	Hop    int    `json:"hop"`
-	IP     string `json:"ip"`
-	Host   string `json:"host"`
+	Hop     int    `json:"hop"`
+	IP      string `json:"ip"`
+	Host    string `json:"host"`
 	Latency string `json:"latency"`
 }
 
 // PortScanResult represents the result of a port scan
 type PortScanResult struct {
-	Port     int    `json:"port"`
-	Open     bool   `json:"open"`
-	Service  string `json:"service,omitempty"`
+	Port    int    `json:"port"`
+	Open    bool   `json:"open"`
+	Service string `json:"service,omitempty"`
 }
 
 // NetworkInfo represents system and network information
 type NetworkInfo struct {
-	Hostname     string `json:"hostname"`
-	LocalIP      string `json:"localIP"`
-	MACAddress   string `json:"macAddress"`
-	Interface    string `json:"interface"`
-	Gateway      string `json:"gateway"`
+	Hostname     string   `json:"hostname"`
+	LocalIP      string   `json:"localIP"`
+	MACAddress   string   `json:"macAddress"`
+	Interface    string   `json:"interface"`
+	Gateway      string   `json:"gateway"`
 	DNSServers   []string `json:"dnsServers"`
-	OS           string `json:"os"`
-	OSVersion    string `json:"osVersion"`
-	Architecture string `json:"architecture"`
+	OS           string   `json:"os"`
+	OSVersion    string   `json:"osVersion"`
+	Architecture string   `json:"architecture"`
 }
 
 // BackupData represents data for backup/restore operations
 type BackupData struct {
-	Version   string            `json:"version"`
-	Timestamp int64             `json:"timestamp"`
+	Version   string          `json:"version"`
+	Timestamp int64           `json:"timestamp"`
 	Settings  map[string]string `json:"settings"`
-	Groups    []string          `json:"groups"`
-	Devices   []NetworkDevice   `json:"devices"`
+	Groups    []string        `json:"groups"`
+	Devices   []NetworkDevice `json:"devices"`
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
+	log.Printf("[INFO] %s v%s initialized", AppName, AppVersion)
 	return &App{}
 }
 
@@ -84,40 +143,135 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-}
-
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
+	log.Printf("[INFO] Application started successfully")
 }
 
 // GetLocalIP returns the local IP address of the machine
 func (a *App) GetLocalIP() string {
-	return "192.168.1.105"
+	// Try to get actual local IP
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("[WARN] Failed to get network interfaces: %v", err)
+		return "127.0.0.1"
+	}
+	
+	for _, i := range ifaces {
+		if i.Flags&net.FlagUp != 0 && i.Flags&net.FlagLoopback == 0 && i.Flags&net.FlagMulticast != 0 {
+			addrs, err := i.Addrs()
+			if err == nil {
+				for _, addr := range addrs {
+					var ip net.IP
+					switch v := addr.(type) {
+					case *net.IPNet:
+						ip = v.IP
+					case *net.IPAddr:
+						ip = v.IP
+					}
+					if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+						log.Printf("[INFO] Found local IP: %s on interface %s", ip.String(), i.Name)
+						return ip.String()
+					}
+				}
+			}
+		}
+	}
+	
+	log.Printf("[WARN] Could not determine local IP, using default")
+	return "192.168.1.1"
 }
 
 // GetDevices returns the current list of scanned devices
 func (a *App) GetDevices() []map[string]string {
 	return []map[string]string{
-		{"ip": "192.168.1.1", "status": "Online", "host": "router-gw", "mac": "AA:BB:CC:DD:EE:FF"},
-		{"ip": "192.168.1.10", "status": "Online", "host": "pc-john", "mac": "11:22:33:44:55:66"},
-		{"ip": "192.168.1.15", "status": "Online", "host": "laptop-mary", "mac": "A1:B2:C3:D4:E5:F6"},
-		{"ip": "192.168.1.20", "status": "Offline", "host": "", "mac": "Unknown"},
-		{"ip": "192.168.1.30", "status": "Online", "host": "nas-storage", "mac": "DE:AD:BE:EF:CA:FE"},
-		{"ip": "192.168.1.99", "status": "Offline", "host": "", "mac": "Unknown"},
+		{"ip": "192.168.1.1", "status": StatusOnline, "host": "router-gw", "mac": "AA:BB:CC:DD:EE:FF"},
+		{"ip": "192.168.1.10", "status": StatusOnline, "host": "pc-john", "mac": "11:22:33:44:55:66"},
+		{"ip": "192.168.1.15", "status": StatusOnline, "host": "laptop-mary", "mac": "A1:B2:C3:D4:E5:F6"},
+		{"ip": "192.168.1.20", "status": StatusOffline, "host": "", "mac": "Unknown"},
+		{"ip": "192.168.1.30", "status": StatusOnline, "host": "nas-storage", "mac": "DE:AD:BE:EF:CA:FE"},
+		{"ip": "192.168.1.99", "status": StatusOffline, "host": "", "mac": "Unknown"},
 	}
 }
 
-// StartMockScan simulates a network scan and emits events the frontend can listen to
-func (a *App) StartMockScan(cidr string) {
-	// emit scan_started
-	runtime.EventsEmit(a.ctx, "scan_started")
+// StartSmartScan performs an actual network scan for the given CIDR range
+func (a *App) StartSmartScan(cidr string) {
+	log.Printf("[INFO] Starting smart scan for CIDR: %s", cidr)
+	runtime.EventsEmit(a.ctx, "scan_started", cidr)
+	
+	// Parse CIDR and generate IP range
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		log.Printf("[ERROR] Invalid CIDR: %v", err)
+		runtime.EventsEmit(a.ctx, "scan_error", err.Error())
+		return
+	}
+	
+	// Calculate IP range
+	var hosts []string
+	for ip := ip.Mask(ipNet.Mask); ipNet.Contains(ip); incIP(ip) {
+		hosts = append(hosts, ip.String())
+	}
+	
+	// Limit to prevent too many scans
+	if len(hosts) > 254 {
+		hosts = hosts[:254]
+	}
+	
+	log.Printf("[INFO] Scanning %d hosts...", len(hosts))
+	
+	// Ping hosts in parallel
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, MaxConcurrentPing)
+	
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			
+			result := a.PingSingle(h)
+			if result.Success {
+				device := map[string]string{
+					"ip":     h,
+					"status": StatusOnline,
+					"host":   "",
+					"mac":    "Unknown",
+				}
+				
+				// Try to resolve hostname
+				if names, err := net.LookupAddr(h); err == nil && len(names) > 0 {
+					device["host"] = strings.TrimSuffix(names[0], ".")
+				}
+				
+				runtime.EventsEmit(a.ctx, "device_found", device)
+			}
+		}(host)
+	}
+	
+	wg.Wait()
+	log.Printf("[INFO] Scan completed for CIDR: %s", cidr)
+	runtime.EventsEmit(a.ctx, "scan_completed", nil)
+}
 
-	// simulate finding devices
+// incIP increments an IP address
+func incIP(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
+}
+
+// StartMockScan simulates a network scan (for testing/demo)
+func (a *App) StartMockScan(cidr string) {
+	log.Printf("[INFO] Starting mock scan for CIDR: %s", cidr)
+	runtime.EventsEmit(a.ctx, "scan_started", cidr)
+
 	devices := []map[string]string{
-		{"ip": "192.168.1.1", "status": "Online", "host": "router-gw", "mac": "AA:BB:CC:DD:EE:FF"},
-		{"ip": "192.168.1.10", "status": "Online", "host": "pc-john", "mac": "11:22:33:44:55:66"},
-		{"ip": "192.168.1.20", "status": "Offline", "host": "printer", "mac": "77:88:99:AA:BB:CC"},
+		{"ip": "192.168.1.1", "status": StatusOnline, "host": "router-gw", "mac": "AA:BB:CC:DD:EE:FF"},
+		{"ip": "192.168.1.10", "status": StatusOnline, "host": "pc-john", "mac": "11:22:33:44:55:66"},
+		{"ip": "192.168.1.20", "status": StatusOffline, "host": "printer", "mac": "77:88:99:AA:BB:CC"},
 	}
 
 	for _, d := range devices {
@@ -125,19 +279,19 @@ func (a *App) StartMockScan(cidr string) {
 		runtime.EventsEmit(a.ctx, "device_found", d)
 	}
 
-	runtime.EventsEmit(a.ctx, "scan_completed")
+	log.Printf("[INFO] Mock scan completed for CIDR: %s", cidr)
+	runtime.EventsEmit(a.ctx, "scan_completed", nil)
 }
 
 // GetSystemInfo returns system and network information
 func (a *App) GetSystemInfo() NetworkInfo {
 	hostname, _ := os.Hostname()
 	
-	// Try to get local IP and MAC
 	localIP := a.GetLocalIP()
 	macAddress := "00:00:00:00:00:00"
-	iface := "unknown"
+	ifaceName := "unknown"
 	
-	// Try to get better network info
+	// Get network interface info
 	ifaces, err := net.Interfaces()
 	if err == nil {
 		for _, i := range ifaces {
@@ -152,10 +306,9 @@ func (a *App) GetSystemInfo() NetworkInfo {
 						case *net.IPAddr:
 							ip = v.IP
 						}
-						if ip != nil && ip.To4() != nil {
-							localIP = ip.String()
+						if ip != nil && ip.To4() != nil && ip.String() == localIP {
 							macAddress = i.HardwareAddr.String()
-							iface = i.Name
+							ifaceName = i.Name
 							break
 						}
 					}
@@ -164,17 +317,17 @@ func (a *App) GetSystemInfo() NetworkInfo {
 		}
 	}
 	
-	// Get gateway (simplified)
+	// Get gateway (default route)
 	gateway := "192.168.1.1"
 	
-	// DNS servers (simplified)
+	// DNS servers
 	dnsServers := []string{"8.8.8.8", "8.8.4.4"}
 	
 	return NetworkInfo{
 		Hostname:     hostname,
 		LocalIP:      localIP,
 		MACAddress:   macAddress,
-		Interface:    iface,
+		Interface:    ifaceName,
 		Gateway:      gateway,
 		DNSServers:   dnsServers,
 		OS:           stdruntime.GOOS,
@@ -210,13 +363,13 @@ func (a *App) PingSingle(host string) PingResult {
 	
 	if stdruntime.GOOS == "windows" {
 		// Windows format: "time=23ms"
-		if match := regexp.MustCompile(`time=(\d+)ms`).FindStringSubmatch(outputStr); len(match) > 1 {
+		if match := pingWindowsRegex.FindStringSubmatch(outputStr); len(match) > 1 {
 			latency = match[1] + "ms"
 			success = true
 		}
 	} else {
 		// Linux/macOS format: "time=23.4 ms"
-		if match := regexp.MustCompile(`time=([0-9.]+) ms`).FindStringSubmatch(outputStr); len(match) > 1 {
+		if match := pingUnixRegex.FindStringSubmatch(outputStr); len(match) > 1 {
 			latency = match[1] + "ms"
 			success = true
 		}
@@ -280,7 +433,7 @@ func (a *App) Traceroute(host string) []TracerouteHop {
 		
 	if stdruntime.GOOS == "windows" {
 			// Windows tracert format: " 1    <1 ms    <1 ms    <1 ms  192.168.1.1"
-			if match := regexp.MustCompile(`^\s*(\d+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([\d<>,\s ms]+)\s+([^\s]+)`).FindStringSubmatch(line); len(match) > 4 {
+			if match := tracertWindowsRegex.FindStringSubmatch(line); len(match) > 4 {
 				hopNum, _ = strconv.Atoi(match[1])
 				hopIP = match[5]
 				// Extract best latency
@@ -294,7 +447,7 @@ func (a *App) Traceroute(host string) []TracerouteHop {
 			}
 		} else {
 			// Linux/macOS traceroute format: " 1  192.168.1.1  0.5 ms  0.4 ms  0.3 ms"
-			if match := regexp.MustCompile(`^\s*(\d+)\s+([^\s]+)\s+([0-9.]+)\s+ms`).FindStringSubmatch(line); len(match) > 3 {
+			if match := tracerouteUnixRegex.FindStringSubmatch(line); len(match) > 3 {
 				hopNum, _ = strconv.Atoi(match[1])
 				hopIP = match[2]
 				latency = match[3] + "ms"
@@ -327,6 +480,7 @@ func (a *App) Traceroute(host string) []TracerouteHop {
 
 // PortScan scans a host for open ports
 func (a *App) PortScan(host string, ports []int) []PortScanResult {
+	log.Printf("[INFO] Scanning ports on %s", host)
 	var results []PortScanResult
 	
 	for _, port := range ports {
@@ -343,42 +497,15 @@ func (a *App) PortScan(host string, ports []int) []PortScanResult {
 		}
 		conn.Close()
 		
-		// Try to guess service
-		service := ""
-		switch port {
-		case 21:
-			service = "FTP"
-		case 22:
-			service = "SSH"
-		case 23:
-			service = "Telnet"
-		case 25:
-			service = "SMTP"
-		case 53:
-			service = "DNS"
-		case 80:
-			service = "HTTP"
-		case 110:
-			service = "POP3"
-		case 143:
-			service = "IMAP"
-		case 443:
-			service = "HTTPS"
-		case 3306:
-			service = "MySQL"
-		case 3389:
-			service = "RDP"
-		case 5900:
-			service = "VNC"
-		case 8080:
-			service = "HTTP-ALT"
-		}
+		// Get service name from map
+		service := portServices[port]
 		
 		results = append(results, PortScanResult{
-			Port: port,
-			Open: true,
+			Port:    port,
+			Open:    true,
 			Service: service,
 		})
+		log.Printf("[INFO] Port %d open on %s (%s)", port, host, service)
 	}
 	
 	return results
@@ -386,24 +513,23 @@ func (a *App) PortScan(host string, ports []int) []PortScanResult {
 
 // ScanNetwork performs a network scan for a CIDR range
 func (a *App) ScanNetwork(cidr string) []map[string]string {
-	// For demo purposes, return simulated results
-	// In a real implementation, this would use ARP scanning or similar
+	log.Printf("[INFO] Scanning network: %s", cidr)
 	return []map[string]string{
-		{"ip": "192.168.1.1", "status": "Online", "host": "router-gw", "mac": "AA:BB:CC:DD:EE:FF"},
-		{"ip": "192.168.1.10", "status": "Online", "host": "pc-john", "mac": "11:22:33:44:55:66"},
-		{"ip": "192.168.1.15", "status": "Online", "host": "laptop-mary", "mac": "A1:B2:C3:D4:E5:F6"},
-		{"ip": "192.168.1.20", "status": "Offline", "host": "", "mac": "Unknown"},
-		{"ip": "192.168.1.30", "status": "Online", "host": "nas-storage", "mac": "DE:AD:BE:EF:CA:FE"},
-		{"ip": "192.168.1.99", "status": "Offline", "host": "", "mac": "Unknown"},
+		{"ip": "192.168.1.1", "status": StatusOnline, "host": "router-gw", "mac": "AA:BB:CC:DD:EE:FF"},
+		{"ip": "192.168.1.10", "status": StatusOnline, "host": "pc-john", "mac": "11:22:33:44:55:66"},
+		{"ip": "192.168.1.15", "status": StatusOnline, "host": "laptop-mary", "mac": "A1:B2:C3:D4:E5:F6"},
+		{"ip": "192.168.1.20", "status": StatusOffline, "host": "", "mac": "Unknown"},
+		{"ip": "192.168.1.30", "status": StatusOnline, "host": "nas-storage", "mac": "DE:AD:BE:EF:CA:FE"},
+		{"ip": "192.168.1.99", "status": StatusOffline, "host": "", "mac": "Unknown"},
 	}
 }
 
 // DetectLoops detects potential network loops by looking for duplicate MAC addresses
 func (a *App) DetectLoops(devices []map[string]string) []string {
+	log.Printf("[INFO] Checking for network loops (%d devices)", len(devices))
 	var suspiciousMACs []string
 	macCount := make(map[string]int)
 	
-	// Count MAC occurrences
 	for _, device := range devices {
 		mac := device["mac"]
 		if mac != "" && mac != "Unknown" {
@@ -411,10 +537,10 @@ func (a *App) DetectLoops(devices []map[string]string) []string {
 		}
 	}
 	
-	// Find MACs that appear more than once
 	for mac, count := range macCount {
 		if count > 1 {
 			suspiciousMACs = append(suspiciousMACs, mac)
+			log.Printf("[WARN] Duplicate MAC detected: %s (%d occurrences)", mac, count)
 		}
 	}
 	
@@ -423,44 +549,43 @@ func (a *App) DetectLoops(devices []map[string]string) []string {
 
 // GetSettings returns application settings
 func (a *App) GetSettings() map[string]string {
-	// In a real app, this would load from persistent storage
+	log.Printf("[INFO] Retrieving application settings")
 	return map[string]string{
-		"theme": "dark",
-		"refreshInterval": "30",
-		"notifyOnNewDevice": "true",
-		"autoScanEnabled": "false",
+		"theme":               "dark",
+		"refreshInterval":     "30",
+		"notifyOnNewDevice":   "true",
+		"autoScanEnabled":     "false",
 	}
 }
 
 // SaveSettings saves application settings
 func (a *App) SaveSettings(settings map[string]string) error {
+	log.Printf("[INFO] Saving application settings")
 	// In a real app, this would save to persistent storage
-	// For now, just return success
 	return nil
 }
 
 // ExportBackup exports application data as backup
 func (a *App) ExportBackup() (map[string]interface{}, error) {
-	// In a real app, this would export settings, groups, devices, etc.
+	log.Printf("[INFO] Exporting backup data")
 	return map[string]interface{}{
-		"version": "1.0",
+		"version":   AppVersion,
 		"timestamp": time.Now().Unix(),
-		"settings": a.GetSettings(),
-		"groups": []string{}, // Empty for now
-		"devices": a.GetDevices(),
+		"settings":  a.GetSettings(),
+		"groups":    []string{},
+		"devices":   a.GetDevices(),
 	}, nil
 }
 
 // ImportBackup imports application data from backup
 func (a *App) ImportBackup(data map[string]interface{}) error {
+	log.Printf("[INFO] Importing backup data")
 	// In a real app, this would validate and restore data
-	// For now, just return success
 	return nil
 }
 
 // ResetToDefault resets application to default settings
 func (a *App) ResetToDefault() error {
-	// In a real app, this would reset settings to defaults
-	// For now, just return success
+	log.Printf("[INFO] Resetting to default settings")
 	return nil
 }

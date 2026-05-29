@@ -1,15 +1,31 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "network-3d-scanner",
+  "shortname": "Net3D Scanner",
+  "version": "1.0.0",
   "outputfilename": "network-3d-scanner",
-  "backend:dir": ".",
-  "frontend:dir": "frontend",
+  "frontend:dir": "./frontend",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "wan",
+    "name": "Bui Van (mrbuivan.vn)",
     "email": "mr.buivan.vn@gmail.com"
+  },
+  "info": {
+    "companyName": "mrbuivan.vn",
+    "productName": "Network 3D Scanner",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright (c) 2024 mrbuivan.vn",
+    "comments": "Professional network scanner with 3D visualization"
+  },
+  "windows": {
+    "webview2installstrategy": "download",
+    "nsis": {
+      "displayLanguageSelector": false,
+      "installerIcon": "",
+      "headerImage": ""
+    }
   }
 }
